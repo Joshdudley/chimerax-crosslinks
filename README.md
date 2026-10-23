@@ -44,6 +44,42 @@ Residue1,Residue2
 
 `add_crosslinks_intramolecular` is an alias for `add_crosslinks_intra`. Positions may be integers or labels such as `K774`. Extra columns are ignored. The example CSVs in this repository contain synthetic positions to illustrate the format; adapt them to your structures.
 
+## Interactive coloring for existing pseudobond groups
+
+Use `color_crosslinks` to apply live distance coloring to an existing pseudobond group created by any method. Load `add_crosslinks.py` with `runscript` first, then run:
+
+```text
+color_crosslinks model='#3' xl_cutoff=27 violation_color='red'
+```
+
+Use the exact pseudobond group ID, such as `#3` or `#2.1`, rather than a protein model, a parent container, or the group's distance-label child. This command does not require a CSV and does not recreate bonds or labels.
+
+By default, each bond retains its original color at or below the cutoff and turns red strictly above it. Colors update as the endpoint atoms or their models move. For groups with atom-colored bond halves, the original half-color behavior is preserved below the cutoff; the whole bond uses the violation color above it. Distances are measured between the actual endpoint atoms, which need not be CA atoms.
+
+To use one color for all bonds below the cutoff:
+
+```text
+color_crosslinks model='#3' xl_cutoff=27 crosslink_color='blue' violation_color='red'
+```
+
+To disable live coloring and restore the colors and half-color settings saved when standalone coloring was first enabled:
+
+```text
+color_crosslinks model='#3' enabled=false
+```
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `model` | Required | One exact pseudobond group model ID. |
+| `xl_cutoff` | `27` | Positive finite distance cutoff in angstroms. |
+| `violation_color` | `red` | Color used strictly above the cutoff. |
+| `crosslink_color` | Unset | Optional uniform color at or below the cutoff; omit to use original individual colors. |
+| `enabled` | `true` | Enable coloring, or disable and restore saved original styles. |
+
+Repeated calls can change the cutoff or colors without losing the saved originals. Bonds added to the group while coloring is enabled are included on the next graphics update; deleted bonds are no longer tracked. Manual recoloring is overridden while live coloring is enabled. Disable first if you want to establish new original colors. Settings and saved original styles are stored as session attributes; reload this script when reopening a saved session to reactivate updates.
+
+The existing `add_crosslinks_inter` and `add_crosslinks_intra` commands retain their live-coloring options and share the same update mechanism. You can also apply `color_crosslinks` to their groups; its saved originals are the bond styles present when the standalone command is first enabled.
+
 ## Options shared by both commands
 
 | Option | Default | Meaning |
@@ -109,4 +145,4 @@ python -m pip install -r requirements-dev.txt
 python -m unittest discover -s . -p 'test_*.py' -v
 ```
 
-These tests use a lightweight ChimeraX API double. They check parsing, replacement, chain routing, styling and live color logic; they do not replace testing the actual ChimeraX graphics interface. The script itself uses the NumPy supplied by ChimeraX for array operations.
+These tests use a lightweight ChimeraX API double. They check parsing, replacement, chain routing, styling, live color logic, and standalone color restoration; they do not replace testing the actual ChimeraX graphics interface. The script itself uses the NumPy supplied by ChimeraX for array operations.

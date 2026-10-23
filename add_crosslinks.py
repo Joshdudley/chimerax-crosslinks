@@ -1,6 +1,14 @@
 """Load this file in ChimeraX with: runscript /path/to/add_crosslinks.py
 
 Commands use quoted key=value options, for example:
+color_crosslinks model='#3' xl_cutoff=27 violation_color='red'
+color_crosslinks model='#3' enabled=false
+The standalone color_crosslinks command works on existing pseudobond groups
+created by any method. Omit crosslink_color to preserve individual bond colors;
+set crosslink_color='blue' for a uniform below-cutoff color. Disabling restores
+colors and halfbond settings saved when standalone coloring was first enabled.
+Settings are saved with the session; reload this script to reactivate updates.
+
 add_crosslinks_inter protein_1='protein_1, model #1.1/A' protein_2='protein_2, model #1.2/B' group_name='protein_1_to_protein_2' data_file='/path/intermolecular.csv' crosslink_color='blue' show_distances=false
 add_crosslinks_intra protein='protein_1, model #1.1/A' group_name='protein_1_internal' data_file='/path/intramolecular_protein_1.csv' crosslink_color='blue' show_distances=false
 
@@ -343,12 +351,22 @@ def _update_group_distance_colors(group):
     import numpy as np
     base = np.frombuffer(bytes.fromhex(group.xlms_base_rgba), dtype=np.uint8)
     red = np.frombuffer(bytes.fromhex(group.xlms_violation_rgba), dtype=np.uint8)
-    colors = np.tile(base, (len(bonds), 1))
+    if getattr(group, 'xlms_per_bond_colors', False):
+        _remember_pseudobond_styles(group)
+        colors = np.array([list(bytes.fromhex(pb.xlms_bond_base_rgba))
+                           for pb in bonds], dtype=np.uint8)
+        halfbonds = np.array([pb.xlms_original_halfbond for pb in bonds], dtype=bool)
+        if getattr(group, 'xlms_uniform_base', False):
+            halfbonds[:] = False
+    else:
+        colors = np.tile(base, (len(bonds), 1))
+        halfbonds = np.zeros(len(bonds), dtype=bool)
+    halfbonds[bonds.lengths > group.xlms_distance_cutoff] = False
     # Use unrounded distances, not the formatted label or ribbon attachment.
     colors[bonds.lengths > group.xlms_distance_cutoff] = red
-    halfbond = bool(np.any(bonds.halfbonds))
+    halfbond = not np.array_equal(np.broadcast_to(bonds.halfbonds, (len(bonds),)), halfbonds)
     if halfbond:
-        bonds.halfbonds = False
+        bonds.halfbonds = halfbonds
     if halfbond or not np.array_equal(bonds.colors, colors):
         bonds.colors = colors
         # Refresh either native cylinders or the existing spacing renderer in
@@ -381,6 +399,99 @@ def _install_distance_coloring(group, base_rgba, cutoff, violation_rgba, enabled
         setattr(group, name, value)
     _ensure_distance_color_updates(group.session)
     _update_group_distance_colors(group)
+
+
+def _remember_pseudobond_styles(group):
+    """Persist originals on bonds so deletion/reordering cannot misassign colors."""
+    import numpy as np
+    bonds = group.pseudobonds
+    colors = bonds.colors
+    halves = np.broadcast_to(bonds.halfbonds, (len(bonds),))
+    uniform = getattr(group, 'xlms_uniform_base', False)
+    for i, pb in enumerate(bonds):
+        if not hasattr(pb, 'xlms_original_rgba'):
+            for name, kind in (('xlms_original_rgba', str),
+                               ('xlms_original_halfbond', bool),
+                               ('xlms_bond_base_rgba', str)):
+                pb.register_attr(group.session, name, 'XLMS crosslinks', attr_type=kind)
+            pb.xlms_original_rgba = bytes(colors[i]).hex()
+            pb.xlms_original_halfbond = bool(halves[i])
+            pb.xlms_bond_base_rgba = (group.xlms_base_rgba if uniform
+                                     else pb.xlms_original_rgba)
+
+
+def color_crosslinks(session, model, xl_cutoff=27.0, violation_color='red',
+                     crosslink_color=None, enabled=True):
+    """Apply live coloring to one existing pseudobond group, without recreating it."""
+    from chimerax.atomic import PseudobondGroup
+    from chimerax.core.errors import UserError
+    import numpy as np
+    try:
+        match = re.fullmatch(r'#?(\d+(?:\.\d+)*)', str(model).strip())
+        if match is None or any(int(n) < 1 for n in match[1].split('.')):
+            raise CrosslinkInputError("model must be one exact model ID, such as '#3' or '#2.1'.")
+        target = '.'.join(str(int(n)) for n in match[1].split('.'))
+        groups = [g for g in session.models.list(type=PseudobondGroup)
+                  if g.id_string == target and not g.deleted]
+        if not groups:
+            raise CrosslinkInputError(f'#{target} is not an existing pseudobond group. Use the group ID, not its distances child.')
+        group = groups[0]
+        enabled = parse_bool(enabled)
+        cutoff = float(xl_cutoff)
+        if not math.isfinite(cutoff) or cutoff <= 0:
+            raise CrosslinkInputError('xl_cutoff must be positive and finite.')
+        red = _parse_color_rgba(session, violation_color, 'violation_color')
+        base = None if crosslink_color is None else _parse_color_rgba(session, crosslink_color, 'crosslink_color')
+    except (ValueError, TypeError, OverflowError) as error:
+        raise UserError(str(error)) from error
+
+    bonds = group.pseudobonds
+    if not enabled:
+        group.xlms_color_by_distance = False
+        if len(bonds) and getattr(group, 'xlms_per_bond_colors', False):
+            colors, halves = bonds.colors, np.broadcast_to(bonds.halfbonds, (len(bonds),)).copy()
+            for i, pb in enumerate(bonds):
+                if hasattr(pb, 'xlms_original_rgba'):
+                    colors[i] = list(bytes.fromhex(pb.xlms_original_rgba))
+                    halves[i] = pb.xlms_original_halfbond
+                    for name in ('xlms_original_rgba', 'xlms_original_halfbond', 'xlms_bond_base_rgba'):
+                        delattr(pb, name)
+            bonds.colors, bonds.halfbonds = colors, halves
+            group._update_graphics(group._ALL_CHANGE)
+            group.redraw_needed(shape_changed=False)
+        group.xlms_per_bond_colors = False
+        session.logger.info(f'Live crosslink coloring disabled for #{target}; saved original styles restored.')
+        return group
+
+    for name in ('xlms_per_bond_colors', 'xlms_uniform_base'):
+        group.register_attr(session, name, 'XLMS crosslinks', attr_type=bool)
+    # Capture before changing settings: repeated calls never save violation red
+    # as an original color. Newly added bonds are captured on the next update.
+    _remember_pseudobond_styles(group)
+    group.xlms_per_bond_colors = True
+    group.xlms_uniform_base = base is not None
+    for pb in bonds:
+        pb.xlms_bond_base_rgba = bytes(base).hex() if base is not None else pb.xlms_original_rgba
+    _install_distance_coloring(group, base or (0, 0, 255, 255), cutoff, red, True)
+    session.logger.info(f'Live crosslink coloring enabled for #{target}: {len(bonds)} pseudobonds; distances > {cutoff:g} Angstroms use {violation_color}.')
+    return group
+
+
+def _color_command(session, options):
+    from chimerax.core.errors import UserError
+    try:
+        values = {}
+        allowed = {'model', 'xl_cutoff', 'violation_color', 'crosslink_color', 'enabled'}
+        for token in shlex.split(options, comments=False, posix=True):
+            key, equals, value = token.partition('=')
+            if not equals or key not in allowed or key in values or not value.strip():
+                raise CrosslinkInputError(f'Invalid option {token!r}. Use key=value with quoted strings.')
+            values[key] = value
+        if 'model' not in values:
+            raise CrosslinkInputError("Missing option: model (for example model='#3').")
+    except ValueError as error:
+        raise UserError(str(error)) from error
+    return color_crosslinks(session, **values)
 
 
 def _style_labels(session, group, show_distances, label_height, label_size):
@@ -634,15 +745,18 @@ def register_commands(session):
     from chimerax.core.commands import CmdDesc, RestOfLine, register
     for name, function in (('add_crosslinks_inter', _inter_command),
                            ('add_crosslinks_intra', _intra_command),
-                           ('add_crosslinks_intramolecular', _intra_command)):
+                           ('add_crosslinks_intramolecular', _intra_command),
+                           ('color_crosslinks', _color_command)):
         description = CmdDesc(required=[('options', RestOfLine)],
-                              synopsis='Read an XL-MS CSV and add a named CA pseudobond group')
+                              synopsis=('Apply interactive distance coloring to an existing pseudobond group'
+                                        if name == 'color_crosslinks' else
+                                        'Read an XL-MS CSV and add a named CA pseudobond group'))
         register(name, description, function, logger=session.logger)
     _restore_spacing_renderers(session)
     if not getattr(session, '_xlms_restore_handler', None):
         session._xlms_restore_handler = session.triggers.add_handler(
             'end restore session', lambda *_: _restore_spacing_renderers(session))
-    session.logger.info('Registered add_crosslinks_inter and add_crosslinks_intra (alias: add_crosslinks_intramolecular).')
+    session.logger.info('Registered add_crosslinks_inter, add_crosslinks_intra (alias: add_crosslinks_intramolecular), and color_crosslinks.')
 
 
 if 'session' in globals():

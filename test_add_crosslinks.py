@@ -94,9 +94,15 @@ class FakeBonds:
         self._colors = None if colors is None else np.array(colors, dtype=np.uint8)
         self.halfbonds = False
         self.color_writes = 0
+        self._instances = []
 
     def __len__(self):
         return len(self.rows)
+
+    def __iter__(self):
+        while len(self._instances) < len(self.rows):
+            self._instances.append(types.SimpleNamespace(register_attr=lambda *a, **kw: None))
+        return iter(self._instances[:len(self.rows)])
 
     @property
     def colors(self):
@@ -701,6 +707,82 @@ class CrosslinkTests(unittest.TestCase):
         for value in ('0', '-1', 'nan', 'inf'):
             with self.assertRaises(xl.CrosslinkInputError):
                 xl.parse_options('protein=x group_name=x data_file=x xl_cutoff=' + value, True)
+
+    def test_standalone_preserves_mixed_colors_and_restores_halfbonds(self):
+        s = FakeSession()
+        group = s.get_group('external')
+        group.pseudobonds = FakeBonds([((0, 0, 0), (27, 0, 0)),
+                                     ((0, 0, 0), (28, 0, 0))],
+                                    [[255, 255, 0, 255], [0, 255, 0, 128]])
+        group.pseudobonds.halfbonds = np.array([True, False])
+        original = group.pseudobonds.colors
+        result = xl._color_command(s, "model='#9' xl_cutoff=27")
+        self.assertIs(result, group)
+        self.assertEqual(group.pseudobonds.colors.tolist(), [original[0].tolist(), [255, 0, 0, 255]])
+        self.assertEqual(group.pseudobonds.halfbonds.tolist(), [True, False])
+        group.pseudobonds.rows[1] = ((0, 0, 0), (20, 0, 0))
+        s.triggers.fire('graphics update')
+        np.testing.assert_array_equal(group.pseudobonds.colors, original)
+        group.pseudobonds.rows[0] = ((0, 0, 0), (40, 0, 0))
+        s.triggers.fire('graphics update')
+        self.assertFalse(group.pseudobonds.halfbonds[0])
+        xl._color_command(s, "model='#9' enabled=false")
+        np.testing.assert_array_equal(group.pseudobonds.colors, original)
+        self.assertEqual(group.pseudobonds.halfbonds.tolist(), [True, False])
+        s.triggers.fire('graphics update')
+        np.testing.assert_array_equal(group.pseudobonds.colors, original)
+        self.assertEqual(len(s.groups), 1)
+        self.assertIsNone(group.labels)
+        self.assertFalse(s.commands)
+
+    def test_standalone_repeated_calls_uniform_color_and_new_bonds(self):
+        s = FakeSession()
+        group = s.get_group('external')
+        group.pseudobonds = FakeBonds([((0, 0, 0), (28, 0, 0))], [[255, 255, 0, 255]])
+        xl.color_crosslinks(s, '#9')
+        xl.color_crosslinks(s, '#9', crosslink_color='green', xl_cutoff=30)
+        self.assertEqual(group.pseudobonds.colors.tolist(), [[0, 255, 0, 255]])
+        xl.color_crosslinks(s, '#9', xl_cutoff=30)
+        self.assertEqual(group.pseudobonds.colors.tolist(), [[255, 255, 0, 255]])
+        group.pseudobonds.rows.append(((0, 0, 0), (31, 0, 0)))
+        group.pseudobonds.halfbonds = False
+        group.pseudobonds.colors = [[255, 255, 0, 255], [0, 255, 0, 255]]
+        s.triggers.fire('graphics update')
+        self.assertEqual(group.pseudobonds.colors.tolist(), [[255, 255, 0, 255], [255, 0, 0, 255]])
+        xl.color_crosslinks(s, '#9', enabled=False)
+        self.assertEqual(group.pseudobonds.colors.tolist(), [[255, 255, 0, 255], [0, 255, 0, 255]])
+        self.assertEqual(len(s.triggers.handlers['graphics update']), 1)
+
+    def test_standalone_invalid_options_preserve_colors(self):
+        s = FakeSession(FakeStructure('1', 'A', [10]))
+        group = s.get_group('external')
+        group.pseudobonds = FakeBonds([((0, 0, 0), (28, 0, 0))])
+        original = group.pseudobonds.colors
+        for text in ("model='#1'", "model='#99'", "model='#9.1'", "model='#9' xl_cutoff=0",
+                     "model='#9' xl_cutoff=nan", "model='#9' enabled=maybe", "model='#9' violation_color=invalid-color",
+                     "model='#9' extra=true", "enabled=true", "model='#9' model='#9'", "model='#9,#1'"):
+            with self.subTest(options=text), self.assertRaises(UserError):
+                xl._color_command(s, text)
+            np.testing.assert_array_equal(group.pseudobonds.colors, original)
+        self.assertFalse(hasattr(group, 'xlms_color_by_distance'))
+
+    def test_standalone_restores_settings_and_handles_empty_group(self):
+        s = FakeSession()
+        group = s.get_group('external')
+        group.pseudobonds = FakeBonds([((0, 0, 0), (28, 0, 0))], [[255, 255, 0, 255]])
+        xl.color_crosslinks(s, '#9')
+        # Simulate reloading the callback after saved attributes are restored.
+        s.triggers = FakeTriggers()
+        s._xlms_distance_color_handler = None
+        xl._restore_spacing_renderers(s)
+        group.pseudobonds.rows[0] = ((0, 0, 0), (20, 0, 0))
+        s.triggers.fire('graphics update')
+        self.assertEqual(group.pseudobonds.colors.tolist(), [[255, 255, 0, 255]])
+        empty = s.get_group('empty')
+        xl.color_crosslinks(s, '#10')
+        xl.color_crosslinks(s, '#10', enabled=False)
+        s.models.close([group])
+        s.triggers.fire('graphics update')
 
     def test_spacing_rounding_and_limits(self):
         self.assertEqual(xl.dashes_for_spacing(30, 1), 30)
