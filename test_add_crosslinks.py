@@ -26,7 +26,7 @@ class UserError(ValueError):
 class FakeStructure:
     def __init__(self, model, chain, positions, missing_ca=()):
         self.id_string = model
-        self.name = 'E6AP PDB'
+        self.name = 'protein_1 PDB'
         self.children = []
         self.residues = [FakeResidue(model, chain, n, n not in missing_ca) for n in positions]
 
@@ -279,18 +279,18 @@ class CrosslinkTests(unittest.TestCase):
         return str(p)
 
     def test_quoted_options_and_protein_spec(self):
-        values = xl.parse_options("protein_1='E6AP, model #1.1/A' protein_2='CaMKII_WT, model #1.2/B' "
+        values = xl.parse_options("protein_1='protein_1, model #1.1/A' protein_2='protein_2, model #1.2/B' "
                                   "group_name='my links' data_file='/a path/input.csv' show_distances=false")
         self.assertIs(values['show_distances'], False)
-        self.assertEqual(xl.parse_protein(values['protein_1']), ('E6AP', '1.1', 'A'))
+        self.assertEqual(xl.parse_protein(values['protein_1']), ('protein_1', '1.1', 'A'))
         self.assertEqual(values['data_file'], '/a path/input.csv')
         with self.assertRaises(xl.CrosslinkInputError):
             xl.parse_options('protein=x group_name=x data_file=x bogus=true', True)
 
     def test_inter_routes_by_columns_not_protein_label(self):
-        path = self.fixture('E6AP,CaMKII_D135N,self_dimer\nK774,K199,false\n')
+        path = self.fixture('protein_1,protein_2_variant,self_dimer\nK774,K199,false\n')
         s = FakeSession(FakeStructure('1.1', 'A', [774]), FakeStructure('1.2', 'B', [199]))
-        group = xl.add_crosslinks_inter(s, 'E6AP, model #1.1/A', 'CaMKII_WT, model #1.2/B', 'links', path)
+        group = xl.add_crosslinks_inter(s, 'protein_1, model #1.1/A', 'protein_2, model #1.2/B', 'links', path)
         self.assertIn('pbond #1.1/A:774@CA #1.2/B:199@CA', s.commands[0])
         self.assertEqual(group.labels.name, 'distances')
         self.assertFalse(group.labels.display)
@@ -298,7 +298,7 @@ class CrosslinkTests(unittest.TestCase):
     def test_intra_draws_flagged_rows_and_shows_labels(self):
         path = self.fixture('Residue1,Residue2,self_dimer\nK27,E33,true\nE33,K27,false\nK27,K88,false\n')
         s = FakeSession(FakeStructure('1.1', 'A', [27, 33]))
-        group = xl.add_crosslinks_intra(s, 'E6AP, model #1.1/A', 'intra', path, show_distances=True)
+        group = xl.add_crosslinks_intra(s, 'protein_1, model #1.1/A', 'intra', path, show_distances=True)
         self.assertEqual(len(s.commands), 1)
         self.assertTrue(group.labels.display)
         self.assertIn('pbond #1.1/A:27@CA #1.1/A:33@CA', s.commands[0])
@@ -307,7 +307,7 @@ class CrosslinkTests(unittest.TestCase):
     def test_same_protein_different_copies(self):
         path = self.fixture('Residue1,Residue2,self_dimer\nK27,E33,true\n')
         s = FakeSession(FakeStructure('1.1', 'A', [27]), FakeStructure('1.3', 'C', [33]))
-        xl.add_crosslinks_inter(s, 'E6AP, model #1.1/A', 'E6AP, model #1.3/C', 'self', path)
+        xl.add_crosslinks_inter(s, 'protein_1, model #1.1/A', 'protein_1, model #1.3/C', 'self', path)
         self.assertIn('pbond #1.1/A:27@CA #1.3/C:33@CA', s.commands[0])
 
     def test_missing_extension_and_legacy_two_columns(self):
@@ -317,16 +317,16 @@ class CrosslinkTests(unittest.TestCase):
         self.assertEqual(rows, [(2, 10, 20)])
 
     def test_validation_does_not_replace_good_group(self):
-        path = self.fixture('E6AP,CaMKII\nK10,K20\n')
+        path = self.fixture('protein_1,protein_2\nK10,K20\n')
         s = FakeSession(FakeStructure('1.1', 'A', [10]), FakeStructure('1.2', 'B', [20]))
-        original = xl.add_crosslinks_inter(s, 'E6AP, model #1.1/A', 'CaMKII, model #1.2/B', 'links', path)
+        original = xl.add_crosslinks_inter(s, 'protein_1, model #1.1/A', 'protein_2, model #1.2/B', 'links', path)
         with self.assertRaises(UserError):
-            xl.add_crosslinks_inter(s, 'E6AP, model #1.1/A', 'CaMKII, model #1.2/B', 'links', path, replace=False)
+            xl.add_crosslinks_inter(s, 'protein_1, model #1.1/A', 'protein_2, model #1.2/B', 'links', path, replace=False)
         with self.assertRaises(UserError):
-            xl.add_crosslinks_inter(s, 'E6AP, model #1.1/A', 'CaMKII, model #1.2/B', 'links', path,
+            xl.add_crosslinks_inter(s, 'protein_1, model #1.1/A', 'protein_2, model #1.2/B', 'links', path,
                                     replace=True, crosslink_color='invalid-color')
         self.assertIs(s.groups['links'], original)
-        replacement = xl.add_crosslinks_inter(s, 'E6AP, model #1.1/A', 'CaMKII, model #1.2/B', 'links', path,
+        replacement = xl.add_crosslinks_inter(s, 'protein_1, model #1.1/A', 'protein_2, model #1.2/B', 'links', path,
                                              show_distances=True)
         self.assertIsNot(replacement, original)
         self.assertEqual(len(replacement.commands), 1)
@@ -336,24 +336,24 @@ class CrosslinkTests(unittest.TestCase):
     def test_intra_replaces_group_by_default(self):
         path = self.fixture('Residue1,Residue2\nK10,K20\n')
         s = FakeSession(FakeStructure('1.1', 'A', [10, 20]))
-        original = xl.add_crosslinks_intra(s, 'E6AP, model #1.1/A', 'intra', path)
-        replacement = xl.add_crosslinks_intra(s, 'E6AP, model #1.1/A', 'intra', path)
+        original = xl.add_crosslinks_intra(s, 'protein_1, model #1.1/A', 'intra', path)
+        replacement = xl.add_crosslinks_intra(s, 'protein_1, model #1.1/A', 'intra', path)
         self.assertIsNot(replacement, original)
         self.assertEqual(len(s.groups), 1)
         self.assertEqual(len(replacement.commands), 1)
 
     def test_partial_group_cleaned_on_command_failure(self):
-        path = self.fixture('E6AP,CaMKII\nK10,K20\nK11,K20\n')
+        path = self.fixture('protein_1,protein_2\nK10,K20\nK11,K20\n')
         s = FakeSession(FakeStructure('1.1', 'A', [10, 11]), FakeStructure('1.2', 'B', [20]))
         s.fail_at = 1
         with self.assertRaises(RuntimeError):
-            xl.add_crosslinks_inter(s, 'E6AP, model #1.1/A', 'CaMKII, model #1.2/B', 'links', path)
+            xl.add_crosslinks_inter(s, 'protein_1, model #1.1/A', 'protein_2, model #1.2/B', 'links', path)
         self.assertNotIn('links', s.groups)
 
     def test_optional_label_controls_and_distance_summary(self):
-        path = self.fixture('E6AP,CaMKII\nK10,K20\nK12,K20\n')
+        path = self.fixture('protein_1,protein_2\nK10,K20\nK12,K20\n')
         s = FakeSession(FakeStructure('1.1', 'A', [10, 12]), FakeStructure('1.2', 'B', [20]))
-        options = xl.parse_options(f"protein_1='E6AP, model #1.1/A' protein_2='CaMKII, model #1.2/B' "
+        options = xl.parse_options(f"protein_1='protein_1, model #1.1/A' protein_2='protein_2, model #1.2/B' "
                                    f"group_name=links data_file='{path}' label_height=1.5 label_size=64")
         group = xl.add_crosslinks_inter(s, **options)
         self.assertEqual(group.label_command, 'label #9 pseudobonds height 1.5 size 64')
@@ -378,16 +378,16 @@ class CrosslinkTests(unittest.TestCase):
             else:
                 s = FakeSession(FakeStructure('1.1', 'A', sorted({a for _, a, b in pairs})),
                                 FakeStructure('1.2', 'B', sorted({b for _, a, b in pairs})))
-                xl.add_crosslinks_inter(s, 'E6AP, model #1.1/A', 'CaMKII, model #1.2/B', path.stem, str(path))
+                xl.add_crosslinks_inter(s, 'protein_1, model #1.1/A', 'protein_2, model #1.2/B', path.stem, str(path))
                 expected = {(a, b) for _, a, b in pairs}
             self.assertEqual(len(s.commands), len(expected))
             print(path.name, ':', len(pairs), 'rows ->', len(s.commands), 'drawable unique pairs in test model')
         self.assertEqual(counts, [2, 2])
 
     def test_spacing_scales_counts_and_replaces_entire_group(self):
-        path = self.fixture('E6AP,CaMKII\nK10,K20\nK10,K30\nK12,K22\n')
+        path = self.fixture('protein_1,protein_2\nK10,K20\nK10,K30\nK12,K22\n')
         s = FakeSession(FakeStructure('1.1', 'A', [10, 12]), FakeStructure('1.2', 'B', [20, 22, 30]))
-        root = xl.add_crosslinks_inter(s, 'E6AP, model #1.1/A', 'CaMKII, model #1.2/B', 'links', path,
+        root = xl.add_crosslinks_inter(s, 'protein_1, model #1.1/A', 'protein_2, model #1.2/B', 'links', path,
                                       dash_spacing=1, label_height=1.5, show_distances=False)
         self.assertEqual(len(s.groups), 1)
         self.assertFalse(s.containers)
@@ -399,24 +399,24 @@ class CrosslinkTests(unittest.TestCase):
         self.assertEqual(root._xlms_renderer.drawings[10].geometry, (5, 0.5, 12))
         self.assertEqual(len(root._xlms_renderer.drawings[10].visible_bonds.rows), 2)
         self.assertEqual(len(root._pseudobonds_planes_pick(None)), 3)
-        replacement = xl.add_crosslinks_inter(s, 'E6AP, model #1.1/A', 'CaMKII, model #1.2/B', 'links', path,
+        replacement = xl.add_crosslinks_inter(s, 'protein_1, model #1.1/A', 'protein_2, model #1.2/B', 'links', path,
                                              dash_spacing=0.5, show_distances=True)
         self.assertTrue(root.deleted)
         self.assertEqual(len(s.groups), 1)
         self.assertEqual(set(replacement._xlms_renderer.drawings), {20, 40})
         self.assertTrue(replacement.labels.display)
         # Switching back to fixed-count mode must remove the spacing-mode root.
-        plain = xl.add_crosslinks_inter(s, 'E6AP, model #1.1/A', 'CaMKII, model #1.2/B', 'links', path)
+        plain = xl.add_crosslinks_inter(s, 'protein_1, model #1.1/A', 'protein_2, model #1.2/B', 'links', path)
         self.assertTrue(replacement.deleted)
         self.assertEqual(len(s.groups), 1)
         self.assertEqual(plain.name, 'links')
 
     def test_spacing_failure_cleans_children(self):
-        path = self.fixture('E6AP,CaMKII\nK10,K20\nK10,K30\n')
+        path = self.fixture('protein_1,protein_2\nK10,K20\nK10,K30\n')
         s = FakeSession(FakeStructure('1.1', 'A', [10]), FakeStructure('1.2', 'B', [20, 30]))
         s.fail_at = 1
         with self.assertRaises(RuntimeError):
-            xl.add_crosslinks_inter(s, 'E6AP, model #1.1/A', 'CaMKII, model #1.2/B', 'links', path,
+            xl.add_crosslinks_inter(s, 'protein_1, model #1.1/A', 'protein_2, model #1.2/B', 'links', path,
                                     dash_spacing=1)
         self.assertFalse(s.groups)
         self.assertFalse(s.containers)
@@ -455,7 +455,7 @@ class CrosslinkTests(unittest.TestCase):
         s.add([old])
         child = s.get_group('links [dashes=10, owner=#9]')
         s.add([child], parent=old)
-        new = xl.add_crosslinks_intra(s, 'E6AP, model #1.1/A', 'links', path, dash_spacing=1)
+        new = xl.add_crosslinks_intra(s, 'protein_1, model #1.1/A', 'links', path, dash_spacing=1)
         self.assertTrue(old.deleted)
         self.assertTrue(child.deleted)
         self.assertEqual(list(s.groups), ['links'])
@@ -465,7 +465,7 @@ class CrosslinkTests(unittest.TestCase):
     def test_output_model_nests_links_and_labels_and_replaces(self):
         path = self.fixture('Residue1,Residue2\nK10,K20\n')
         s = FakeSession(FakeStructure('2', 'A', [10, 20]))
-        values = xl.parse_options(f"protein='E6AP, model #2/A' group_name=Intra_E6AP "
+        values = xl.parse_options(f"protein='protein_1, model #2/A' group_name=Intra_protein_1 "
                                   f"data_file='{path}' output_model='#2.1' dash_spacing=1 label_height=1.5", True)
         group = xl.add_crosslinks_intra(s, **values)
         self.assertEqual(group.id_string, '2.1')
@@ -479,13 +479,13 @@ class CrosslinkTests(unittest.TestCase):
         self.assertEqual(s.structures[0].children, [replacement])
 
     def test_inter_output_model_and_top_level_output(self):
-        path = self.fixture('E6AP,CaMKII\nK10,K20\n')
+        path = self.fixture('protein_1,protein_2\nK10,K20\n')
         s = FakeSession(FakeStructure('2', 'A', [10]), FakeStructure('3', 'B', [20]))
-        group = xl.add_crosslinks_inter(s, 'E6AP, model #2/A', 'CaMKII, model #3/B', 'links', path,
+        group = xl.add_crosslinks_inter(s, 'protein_1, model #2/A', 'protein_2, model #3/B', 'links', path,
                                         output_model='#2.4', show_distances=True)
         self.assertEqual(group.id_string, '2.4')
         self.assertEqual(group.labels.id_string, '2.4.1')
-        group = xl.add_crosslinks_inter(s, 'E6AP, model #2/A', 'CaMKII, model #3/B', 'other_links', path,
+        group = xl.add_crosslinks_inter(s, 'protein_1, model #2/A', 'protein_2, model #3/B', 'other_links', path,
                                         output_model='#8')
         self.assertEqual(group.id_string, '8')
         self.assertEqual(group.labels.id_string, '8.1')
@@ -494,38 +494,38 @@ class CrosslinkTests(unittest.TestCase):
     def test_output_model_errors_preserve_existing_links(self):
         path = self.fixture('Residue1,Residue2\nK10,K20\n')
         s = FakeSession(FakeStructure('2', 'A', [10, 20]))
-        original = xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'links', path, output_model='#2.1')
+        original = xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'links', path, output_model='#2.1')
         other = s.get_group('unrelated')
         s.assign_id(other, (2, 2))
         # Parent must survive replacement; occupied IDs and malformed selectors
         # must be rejected before closing or creating any models.
         for value in ('#2', '#2.2', '#5.1', '#2.1.3', '#2.1/A', '#0', '#2.0', '#2,#3'):
             with self.subTest(value=value), self.assertRaises(UserError):
-                xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'links', path, output_model=value)
+                xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'links', path, output_model=value)
             self.assertIs(s.groups['links'], original)
             self.assertFalse(original.deleted)
             self.assertFalse(other.deleted)
         with self.assertRaises(UserError):
-            xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'links', path,
+            xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'links', path,
                                     output_model='#2.1', replace=False)
         self.assertFalse(original.deleted)
 
     def test_inter_case_change_replaces_at_requested_id(self):
-        path = self.fixture('E6AP,CaMKII\nK10,K20\n')
+        path = self.fixture('protein_1,protein_2\nK10,K20\n')
         s = FakeSession(FakeStructure('4', 'A', [10]), FakeStructure('5', 'B', [20]))
-        old_name = 'Inter_E6AP_to_CaMKII_Group_1'
-        new_name = 'Inter_E6AP_to_CaMKII_group_1'
-        old = xl.add_crosslinks_inter(s, 'E6AP, model #4/A', 'CaMKII_WT, model #5/B', old_name, path,
+        old_name = 'Inter_protein_1_to_protein_2_Group_1'
+        new_name = 'Inter_protein_1_to_protein_2_group_1'
+        old = xl.add_crosslinks_inter(s, 'protein_1, model #4/A', 'protein_2, model #5/B', old_name, path,
                                       output_model='#5.1', dash_spacing=1)
         # Bad input and replace=false must preserve the existing case variant.
         with self.assertRaises(UserError):
-            xl.add_crosslinks_inter(s, 'E6AP, model #4/A', 'CaMKII_WT, model #5/B', new_name, path,
+            xl.add_crosslinks_inter(s, 'protein_1, model #4/A', 'protein_2, model #5/B', new_name, path,
                                     output_model='#5.1', replace=False)
         with self.assertRaises(UserError):
-            xl.add_crosslinks_inter(s, 'E6AP, model #4/A', 'CaMKII_WT, model #5/B', new_name,
+            xl.add_crosslinks_inter(s, 'protein_1, model #4/A', 'protein_2, model #5/B', new_name,
                                     path + '.missing', output_model='#5.1')
         self.assertFalse(old.deleted)
-        new = xl.add_crosslinks_inter(s, 'E6AP, model #4/A', 'CaMKII_WT, model #5/B', new_name, path,
+        new = xl.add_crosslinks_inter(s, 'protein_1, model #4/A', 'protein_2, model #5/B', new_name, path,
                                       output_model='#5.1', crosslink_color='yellow', show_distances=True,
                                       label_height=1.5, label_size=64, label_decimals=1,
                                       dash_spacing=1, radius=0.2)
@@ -540,32 +540,32 @@ class CrosslinkTests(unittest.TestCase):
     def test_intra_case_change_replaces_without_output_id(self):
         path = self.fixture('Residue1,Residue2\nK10,K20\n')
         s = FakeSession(FakeStructure('2', 'A', [10, 20]))
-        old = xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'Intra_E6AP', path)
-        new = xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'intra_e6ap', path)
+        old = xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'Intra_protein_1', path)
+        new = xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'intra_protein_1', path)
         self.assertTrue(old.deleted)
-        self.assertEqual(list(s.groups), ['intra_e6ap'])
-        self.assertEqual(new.name, 'intra_e6ap')
+        self.assertEqual(list(s.groups), ['intra_protein_1'])
+        self.assertEqual(new.name, 'intra_protein_1')
 
     def test_case_match_does_not_replace_unrelated_target(self):
         path = self.fixture('Residue1,Residue2\nK10,K20\n')
         s = FakeSession(FakeStructure('2', 'A', [10, 20]))
-        old = xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'Intra_E6AP', path)
+        old = xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'Intra_protein_1', path)
         other = s.get_group('Unrelated')
         s.assign_id(other, (2, 1))
         with self.assertRaises(UserError):
-            xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'intra_e6ap', path, output_model='#2.1')
+            xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'intra_protein_1', path, output_model='#2.1')
         self.assertFalse(old.deleted)
         self.assertFalse(other.deleted)
 
     def test_output_id_replaces_completely_different_name(self):
         path = self.fixture('Residue1,Residue2\nK10,K20\n')
         s = FakeSession(FakeStructure('2', 'A', [10, 20]))
-        old = xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'Old_links', path, output_model='#2.1')
+        old = xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'Old_links', path, output_model='#2.1')
         with self.assertRaises(UserError):
-            xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'New_links', path,
+            xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'New_links', path,
                                     output_model='#2.1', replace=False)
         self.assertFalse(old.deleted)
-        new = xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'New_links', path, output_model='#2.1')
+        new = xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'New_links', path, output_model='#2.1')
         self.assertTrue(old.deleted)
         self.assertEqual(list(s.groups), ['New_links'])
         self.assertEqual(new.id_string, '2.1')
@@ -575,10 +575,10 @@ class CrosslinkTests(unittest.TestCase):
     def test_output_id_name_collision_is_checked_before_deleting(self):
         path = self.fixture('Residue1,Residue2\nK10,K20\n')
         s = FakeSession(FakeStructure('2', 'A', [10, 20]))
-        first = xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'First', path, output_model='#2.1')
-        second = xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'Second', path, output_model='#2.2')
+        first = xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'First', path, output_model='#2.1')
+        second = xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'Second', path, output_model='#2.2')
         with self.assertRaises(UserError):
-            xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'Second', path, output_model='#2.1')
+            xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'Second', path, output_model='#2.1')
         self.assertFalse(first.deleted)
         self.assertFalse(second.deleted)
         self.assertEqual(len(s.groups), 2)
@@ -591,7 +591,7 @@ class CrosslinkTests(unittest.TestCase):
         child = s.get_group('Old count bucket')
         s.add([child], parent=old)
         old_id = '#' + old.id_string
-        new = xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'New_links', path, output_model=old_id)
+        new = xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'New_links', path, output_model=old_id)
         self.assertTrue(old.deleted)
         self.assertTrue(child.deleted)
         self.assertEqual('#' + new.id_string, old_id)
@@ -599,29 +599,29 @@ class CrosslinkTests(unittest.TestCase):
     def test_distance_precision_for_both_commands(self):
         path = self.fixture('Residue1,Residue2\nK10,K20\n')
         s = FakeSession(FakeStructure('2', 'A', [10, 20]), FakeStructure('3', 'B', [20]))
-        options = xl.parse_options(f"protein='E6AP, model #2/A' group_name=intra data_file='{path}' "
+        options = xl.parse_options(f"protein='protein_1, model #2/A' group_name=intra data_file='{path}' "
                                    "label_decimals=1 output_model='#2.1'", True)
         group = xl.add_crosslinks_intra(s, **options)
         self.assertEqual(s.pb_dist_monitor.decimal_places, 1)
         self.assertEqual(group.labels.id_string, '2.1.1')
         self.assertFalse(group.labels.display)
         # Omitting precision preserves the native preference.
-        xl.add_crosslinks_inter(s, 'E6AP, model #2/A', 'CaMKII, model #3/B', 'inter', path)
+        xl.add_crosslinks_inter(s, 'protein_1, model #2/A', 'protein_2, model #3/B', 'inter', path)
         self.assertEqual(s.pb_dist_monitor.decimal_places, 1)
-        xl.add_crosslinks_inter(s, 'E6AP, model #2/A', 'CaMKII, model #3/B', 'inter', path,
+        xl.add_crosslinks_inter(s, 'protein_1, model #2/A', 'protein_2, model #3/B', 'inter', path,
                                 label_decimals=0, show_distances=True)
         self.assertEqual(s.pb_dist_monitor.decimal_places, 0)
         # Python callers use the same option.
-        xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'intra', path, label_decimals=2)
+        xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'intra', path, label_decimals=2)
         self.assertEqual(s.pb_dist_monitor.decimal_places, 2)
 
     def test_bad_precision_preserves_existing_group(self):
         path = self.fixture('Residue1,Residue2\nK10,K20\n')
         s = FakeSession(FakeStructure('2', 'A', [10, 20]))
-        original = xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'intra', path)
+        original = xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'intra', path)
         for value in (-1, 1.5, True):
             with self.assertRaises(UserError):
-                xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'intra', path, label_decimals=value)
+                xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'intra', path, label_decimals=value)
             self.assertIs(s.groups['intra'], original)
         for extra in ('label_decimals=-1', 'label_decimals=1.5',
                       'label_decimals=1 label_decimals=2', 'label_sig_figs=1', 'label_decimal_places=1'):
@@ -630,11 +630,11 @@ class CrosslinkTests(unittest.TestCase):
         self.assertFalse(original.deleted)
 
     def test_live_colors_cross_threshold_in_both_directions(self):
-        path = self.fixture('E6AP,CaMKII\nK10,K36\nK10,K37\nK10,K38\n')
+        path = self.fixture('protein_1,protein_2\nK10,K36\nK10,K37\nK10,K38\n')
         for spacing in (None, 1.0):
             with self.subTest(dash_spacing=spacing):
                 s = FakeSession(FakeStructure('4', 'A', [10]), FakeStructure('5', 'B', [36, 37, 38]))
-                group = xl.add_crosslinks_inter(s, 'E6AP, model #4/A', 'CaMKII, model #5/B',
+                group = xl.add_crosslinks_inter(s, 'protein_1, model #4/A', 'protein_2, model #5/B',
                                                 'links', path, crosslink_color='yellow',
                                                 output_model='#5.1', dash_spacing=spacing, label_decimals=1)
                 yellow, red = [255, 255, 0, 255], [255, 0, 0, 255]
@@ -658,14 +658,14 @@ class CrosslinkTests(unittest.TestCase):
     def test_live_colors_for_intra_and_custom_settings(self):
         path = self.fixture('Residue1,Residue2\nK10,K38\n')
         s = FakeSession(FakeStructure('2', 'A', [10, 38]))
-        options = xl.parse_options(f"protein='E6AP, model #2/A' group_name=links data_file='{path}' "
+        options = xl.parse_options(f"protein='protein_1, model #2/A' group_name=links data_file='{path}' "
                                    "xl_cutoff=25 violation_color=green color_by_distance=true", True)
         group = xl.add_crosslinks_intra(s, **options)
         self.assertEqual(group.pseudobonds.colors.tolist(), [[0, 255, 0, 255]])
         group.pseudobonds.rows[0] = ((10, 0, 0), (35, 0, 0))
         s.triggers.fire('graphics update')
         self.assertEqual(group.pseudobonds.colors.tolist(), [[0, 0, 255, 255]])
-        replacement = xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'links', path,
+        replacement = xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'links', path,
                                               color_by_distance=False, crosslink_color='yellow')
         s.triggers.fire('graphics update')
         self.assertEqual(replacement.pseudobonds.colors.tolist(), [[255, 255, 0, 255]])
@@ -692,11 +692,11 @@ class CrosslinkTests(unittest.TestCase):
     def test_invalid_live_options_preserve_existing_group(self):
         path = self.fixture('Residue1,Residue2\nK10,K38\n')
         s = FakeSession(FakeStructure('2', 'A', [10, 38]))
-        old = xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'links', path)
+        old = xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'links', path)
         for option in ({'xl_cutoff': 0}, {'xl_cutoff': float('nan')},
                        {'violation_color': 'invalid-color'}, {'color_by_distance': 'maybe'}):
             with self.assertRaises(UserError):
-                xl.add_crosslinks_intra(s, 'E6AP, model #2/A', 'links', path, **option)
+                xl.add_crosslinks_intra(s, 'protein_1, model #2/A', 'links', path, **option)
             self.assertFalse(old.deleted)
         for value in ('0', '-1', 'nan', 'inf'):
             with self.assertRaises(xl.CrosslinkInputError):

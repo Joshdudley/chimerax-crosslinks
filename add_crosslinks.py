@@ -1,8 +1,8 @@
 """Load this file in ChimeraX with: runscript /path/to/add_crosslinks.py
 
 Commands use quoted key=value options, for example:
-add_crosslinks_inter protein_1='E6AP, model #1.1/A' protein_2='CaMKII_D135N, model #1.2/B' group_name='E6AP_to_CaMKII' data_file='/path/intermolecular.csv' crosslink_color='blue' show_distances=false
-add_crosslinks_intra protein='E6AP, model #1.1/A' group_name='E6AP_internal' data_file='/path/intramolecular_E6AP.csv' crosslink_color='blue' show_distances=false
+add_crosslinks_inter protein_1='protein_1, model #1.1/A' protein_2='protein_2, model #1.2/B' group_name='protein_1_to_protein_2' data_file='/path/intermolecular.csv' crosslink_color='blue' show_distances=false
+add_crosslinks_intra protein='protein_1, model #1.1/A' group_name='protein_1_internal' data_file='/path/intramolecular_protein_1.csv' crosslink_color='blue' show_distances=false
 
 CSV positions must already match the loaded structure: no automatic offset or
 sequence renumbering is applied. Distances are straight-line CA-to-CA distances.
@@ -80,7 +80,7 @@ def parse_protein(value):
     match = _PROTEIN_SPEC.fullmatch(value)
     if match is None:
         raise CrosslinkInputError(
-            "Use a protein descriptor such as 'E6AP, model #1.1/A'."
+            "Use a protein descriptor such as 'protein_1, model #1.1/A'."
         )
     return match['label'].strip(), match['model'], match['chain']
 

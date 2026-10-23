@@ -17,13 +17,13 @@ Load your structures before adding crosslinks. Run the script once per session, 
 ## Intermolecular crosslinks
 
 ```text
-add_crosslinks_inter protein_1='E6AP, model #1/A' protein_2='CaMKII_WT, model #2/B' group_name='Inter_E6AP_to_CaMKII' data_file='/path/to/intermolecular.csv' crosslink_color='blue' show_distances=true label_decimals=1 xl_cutoff=27
+add_crosslinks_inter protein_1='protein_1, model #1/A' protein_2='protein_2, model #2/B' group_name='Inter_protein_1_to_protein_2' data_file='/path/to/intermolecular.csv' crosslink_color='blue' show_distances=true label_decimals=1 xl_cutoff=27
 ```
 
 The first two CSV columns specify the residue positions in protein_1 and protein_2, respectively. Their headers can be protein names:
 
 ```csv
-E6AP,CaMKII_WT
+protein_1,protein_2
 774,199
 780,205
 ```
@@ -31,7 +31,7 @@ E6AP,CaMKII_WT
 ## Intramolecular crosslinks
 
 ```text
-add_crosslinks_intra protein='E6AP, model #1/A' group_name='Intra_E6AP' data_file='/path/to/intramolecular.csv' crosslink_color='blue' show_distances=true label_decimals=1 xl_cutoff=27
+add_crosslinks_intra protein='protein_1, model #1/A' group_name='Intra_protein_1' data_file='/path/to/intramolecular.csv' crosslink_color='blue' show_distances=true label_decimals=1 xl_cutoff=27
 ```
 
 Intramolecular CSVs require these headers:
@@ -81,8 +81,8 @@ crosslinks_file = "/path/to/intramolecular.csv"
 
 _cmd(session, (
     "add_crosslinks_intra "
-    "protein='E6AP, model #1/A' "
-    "group_name='Intra_E6AP' "
+    "protein='protein_1, model #1/A' "
+    "group_name='Intra_protein_1' "
     f"data_file='{crosslinks_file}' "
     "crosslink_color='blue' show_distances=true "
     f"label_height={label_height} label_size={label_size} "
