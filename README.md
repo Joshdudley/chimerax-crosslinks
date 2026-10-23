@@ -110,7 +110,3 @@ python -m unittest discover -s . -p 'test_*.py' -v
 ```
 
 These tests use a lightweight ChimeraX API double. They check parsing, replacement, chain routing, styling and live color logic; they do not replace testing the actual ChimeraX graphics interface. The script itself uses the NumPy supplied by ChimeraX for array operations.
-
-## Uploading to GitHub
-
-Create a repository named `chimerax-crosslinks` at https://github.com/new, choose its visibility, and upload this folder's contents. Include `.github/workflows/tests.yml` to enable the automated checks. No license has been selected; choose one before distributing under an open-source license.
